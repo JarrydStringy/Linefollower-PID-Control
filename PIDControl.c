@@ -5,18 +5,21 @@
 #include "Motors.h"
 #include "Sensors.h"
 
-#define Kp 120
-#define Kd 30
-#define Ki 5
+#define Kp 10
+#define Kd 0
+#define Ki 0
 
 #define INTEGRAL_MAX 80
 
 #define THRESHOLD 110
 
-#define RIGHT_BASE_SPEED 45
-#define LEFT_BASE_SPEED 45
+#define RIGHT_BASE_SPEED 20
+#define LEFT_BASE_SPEED 20
 #define MAX_CORRECTION 127
-//
+
+
+double maxVal[] = {0,0,0,0,0,0};
+double minVal[] = {255,255,255,255,255,255};
 
 // int lindex=0;
 
@@ -31,10 +34,14 @@ void setup(){
   timer1_init();//motors.c
 }
 
-int line_Position(){
+double line_Position(){
   uint8_t sensor_ADMUX[] =  {0b11100101,0b11100110,0b11100111,0b11100011,0b11100010,0b11100001};
   uint8_t sensor_ADCSRB[] = {0b00000000,0b00000000,0b00000000,0b00100000,0b00100000,0b00100000};
   uint8_t sensor[6];
+  uint16_t sensor_calib[6];
+  uint16_t sum = 0;
+  uint16_t weightedSum = 0;
+  double error;
   int i = 0;
   while (i<6){
     ADMUX = sensor_ADMUX[i];
@@ -44,46 +51,36 @@ int line_Position(){
     sensor[i] = ADCH;
     i++;
   }
-  if(sensor[1]<THRESHOLD && sensor[2]<THRESHOLD && sensor[3]<THRESHOLD && sensor[4]<THRESHOLD){
-    return 0;
+  i = 0;
+  while (i<6){
+    sensor_calib[i] = (sensor[i] - minVal[i])/(maxVal[i]-minVal[i])*1000;
+    sum = sum + sensor_calib[i];
+    weightedSum = weightedSum + (i * sensor_calib[i]);
+    i++;
   }
-  else if(sensor[0]<THRESHOLD && sensor[1]<THRESHOLD){
-    return -4;
-  }
-  else if(sensor[4]<THRESHOLD && sensor[5]<THRESHOLD){
-    return 4;
-  }
-  else if(sensor[1]<THRESHOLD && sensor[2]<THRESHOLD){
-    return -2;
-  }
-  else if(sensor[3]<THRESHOLD && sensor[4]<THRESHOLD){
-    return 2;
-  }
-  else if(sensor[0]<THRESHOLD){
-    return -5;
-  }
-  else if(sensor[5]<THRESHOLD){
-    return 5;
-  }
-  else if(sensor[1]<THRESHOLD){
-    return -3;
-  }
-  else if(sensor[4]<THRESHOLD){
-    return 3;
-  }
-  else if(sensor[2]<THRESHOLD){
-    return -1;
-  }
-  else if(sensor[3]<THRESHOLD){
-    return 1;
-  }
-  else if(sensor[2]<THRESHOLD && sensor[3]<THRESHOLD){
-    return 0;
-  }
-  else{
-    return 10;
+  error = 2*(weightedSum/sum) - 5;
+  return error;
+}
+
+void callibrate(){
+  uint8_t sensor_ADMUX[] =  {0b11100101,0b11100110,0b11100111,0b11100011,0b11100010,0b11100001};
+  uint8_t sensor_ADCSRB[] = {0b00000000,0b00000000,0b00000000,0b00100000,0b00100000,0b00100000};
+  int i = 0;
+  while (i<6){
+    ADMUX = sensor_ADMUX[i];
+    ADCSRB = sensor_ADCSRB[i];
+    ADCSRA |= (1<<ADSC);
+    while(ADCSRA & (1<<ADSC));
+    if (ADCH > maxVal[i]){
+      maxVal[i] = ADCH;
+    }
+    if (ADCH < minVal[i]){
+      minVal[i] = ADCH;
+    }
+    i++;
   }
 }
+
 
 // void Straight_Detection(double error){
 //   last10[lindex] = error;
@@ -111,8 +108,9 @@ int main(){
 
   //Setup Loop (See Setup Function for Full Setup)
   while(set == 0){
-  	setup();
+    setup();
     if(PINC&(1<<6)){
+      callibrate();
       set = 1;
       PORTB |= (1<<2); //turn LED on
     }
