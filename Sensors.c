@@ -9,15 +9,22 @@ void ADC_init(){
 	ADCSRA |= (1 << ADSC);
 }
 
-uint8_t SensorValue(){
 
-	ADMUX = 0b11100011; // clears the bottom 3 bits before ORing
-	ADCSRB =0b00100000;
-	ADCSRA |= (1<<ADSC);
-	while(ADCSRA & (1<<ADSC));
-	uint8_t sensor_out = ADCH; // sensor out wasnt assigned
-
-	return sensor_out;
+// Get Sensor Value store in static array, return pointer
+uint8_t * SensorValue(){
+  uint8_t sensor_ADMUX[] =  {0b11100101,0b11100110,0b11100111,0b11100011,0b11100010,0b11100001};
+  uint8_t sensor_ADCSRB[] = {0b00000000,0b00000000,0b00000000,0b00100000,0b00100000,0b00100000};
+  static uint8_t sensor[6];
+  int i = 0;
+  while (i<6){
+    ADMUX = sensor_ADMUX[i];
+    ADCSRB = sensor_ADCSRB[i];
+    ADCSRA |= (1<<ADSC);
+    while(ADCSRA & (1<<ADSC));
+    sensor[i] = ADCH;
+    i++;
+  }
+	return sensor;
 }
 
 
@@ -55,7 +62,7 @@ double line_Positionx(){
 
 		a = (y1+y2+2*y3)/2;
 
-		line = y2 - y1 - 2*a*x1 - a;
+		line = (y2 - y1 - 2*a*x1 - a)*2-5;
 
 		return line;
 
