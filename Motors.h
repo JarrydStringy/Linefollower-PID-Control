@@ -4,8 +4,6 @@
 #include <avr/io.h>
 
 
-void timer0_init();
-void timer1_init();
-void setMotorSpeeds(int8_t MotorSpeeds[2]);
-
+void SetUpMotors( void );
+void setMotorSpeeds(double motors1, double motors2);
 #endif

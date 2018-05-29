@@ -4,7 +4,7 @@
 #include <avr/io.h>
 
 void ADC_init();
-uint8_t SensorValue(); // missing ;
+uint8_t * SensorValue(); // missing ;
 double line_Positionx();
 
 #endif
