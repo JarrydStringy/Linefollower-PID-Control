@@ -5,14 +5,19 @@
 #include "Motors.h"
 #include "Sensors.h"
 
-#define Kp 35
-#define Kd 6
+#define intersections 2
+
+
+#define Kp 25
+#define Kd 10
 #define Ki 0
 
 #define THRESHOLD 110
 
-#define RIGHT_SLOW_SPEED 20
-#define LEFT_SLOW_SPEED 20
+#define RIGHT_SLOW_SPEED 15
+#define LEFT_SLOW_SPEED 15
+#define RIGHT_MID_SPEED 20
+#define LEFT_MID_SPEED 20
 #define RIGHT_FAST_SPEED 35
 #define LEFT_FAST_SPEED 35
 #define MAX_CORRECTION 127
@@ -21,6 +26,8 @@
   int LEFT_BASE_SPEED =LEFT_SLOW_SPEED;
 
 int onWhite[2];
+int onColour;
+int slowZone = 0;
 
 double maxVal[] = {0,0,0,0,0,0,0};
 double minVal[] = {255,255,255,255,255,255,255};
@@ -151,6 +158,9 @@ void stopMotors(){
 }
 
 
+
+
+
 int detectMarkers(){
   int prevState[2];
   uint8_t sensor_ADMUX[] =  {0b11100001,0b11100000};
@@ -160,7 +170,7 @@ int detectMarkers(){
   int case_ = 0;
   int i = 0;
   while (i<2){
-    prevState[i] = onWhite[i];
+    prevState[i]= onWhite[i];
     ADMUX = sensor_ADMUX[i];
     ADCSRB = sensor_ADCSRB[i];
     ADCSRA |= (1<<ADSC);
@@ -168,16 +178,23 @@ int detectMarkers(){
     sides[i] = ADCH;
     sides_calib[i] = (sides[i] - minVal[i+6])/(maxVal[i+6] - minVal[i+6])*1000;
 
-    if (sides_calib[i]<500){
+    if (sides_calib[i]<100){
       onWhite[i] = 1;
     }
-    if(onWhite[i]>prevState[i]){
-      case_ = case_ + (i+1);
-    }
+    else {onWhite[i] = 0;}
+    if (onWhite[i]==1)PORTB |= (1<<(2*i+1));
+    else PORTB &= ~(1<<(2*i+1));
     i++;
-  }
+    }
+    if(onWhite[0]>prevState[0]){
+      case_ = case_ + 1;
+    }
+    if(onWhite[1]<prevState[1]){
+      case_ = case_ + 2;
+    }
   return case_;
 }
+
 
 int main(){
   uint8_t sensor[6];
@@ -201,7 +218,7 @@ int main(){
   double error;
   double last_error;
   int iteration = 1;
-  int RMarker = 0;
+  int RMarker = 1;
   double errorSum=0;
   double errorAve=0;
   double derivative = 0;
@@ -225,11 +242,11 @@ int main(){
       errorSum = 0;
     }
     if(case_ == 2){
-      if(RMarker == 2){
+      if(RMarker == 2*intersections + 2){
         _delay_ms(100);
         stopMotors();
         _delay_ms(1000);
-        RMarker = 0;
+        RMarker = 1;
       }
       else{
         RMarker++;
@@ -245,8 +262,8 @@ int main(){
     else {
       // PORTB |= (1<<1);
       PORTB &= ~(1<<2);
-      RIGHT_BASE_SPEED =RIGHT_SLOW_SPEED;
-      LEFT_BASE_SPEED =LEFT_SLOW_SPEED;
+      RIGHT_BASE_SPEED =RIGHT_MID_SPEED;
+      LEFT_BASE_SPEED =LEFT_MID_SPEED;
     }
 
     derivative = error - last_error;
