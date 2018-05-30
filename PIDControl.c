@@ -7,23 +7,30 @@
 
 #define intersections 2
 
-
-#define Kp 25
-#define Kd 10
-#define Ki 0
+#define Kp 15
+#define Kd 0
+#define Ki 0.01
 
 #define THRESHOLD 110
 
-#define RIGHT_SLOW_SPEED 15
-#define LEFT_SLOW_SPEED 15
-#define RIGHT_MID_SPEED 20
-#define LEFT_MID_SPEED 20
-#define RIGHT_FAST_SPEED 35
-#define LEFT_FAST_SPEED 35
+#define RIGHT_SLOW_SPEED 10
+#define LEFT_SLOW_SPEED 10
+#define RIGHT_MID_SPEED 25
+#define LEFT_MID_SPEED 25
+#define RIGHT_FAST_SPEED 40
+#define LEFT_FAST_SPEED 40
 #define MAX_CORRECTION 127
 
-  int RIGHT_BASE_SPEED =RIGHT_SLOW_SPEED;
-  int LEFT_BASE_SPEED =LEFT_SLOW_SPEED;
+int RIGHT_BASE_SPEED =RIGHT_SLOW_SPEED;
+int LEFT_BASE_SPEED =LEFT_SLOW_SPEED;
+
+#define STRAIGHT 1
+#define CORNER 0
+int map[50];
+for (int i=0; i<50;i++){
+  map[i] = 9;
+}
+int sectCounter = 0;
 
 int onWhite[2];
 int onColour;
@@ -40,6 +47,7 @@ void setup(){
   DDRB |= (1<<1); //set up LED as output
   DDRB |= (1<<2); //set up LED as output
   DDRB |= (1<<3); //set up LED as output
+  DDRD |= (1<<5); //set up LED as output
 
   ADC_init();//sensors.c
   SetUpMotors();
@@ -158,7 +166,22 @@ void stopMotors(){
 }
 
 
+void mapping(int sect, double error){
 
+
+  if( errorSum/(double)iteration > -0.5  &&  errorSum/(double)iteration < 0.5 ){
+    // PORTB &= ~(1<<1);
+    PORTB |= (1<<2);
+    RIGHT_BASE_SPEED =RIGHT_FAST_SPEED;
+    LEFT_BASE_SPEED =LEFT_FAST_SPEED;
+  }
+  else {
+    // PORTB |= (1<<1);
+    PORTB &= ~(1<<2);
+    RIGHT_BASE_SPEED =RIGHT_MID_SPEED;
+    LEFT_BASE_SPEED =LEFT_MID_SPEED;
+  }
+}
 
 
 int detectMarkers(){
@@ -178,12 +201,14 @@ int detectMarkers(){
     sides[i] = ADCH;
     sides_calib[i] = (sides[i] - minVal[i+6])/(maxVal[i+6] - minVal[i+6])*1000;
 
-    if (sides_calib[i]<100){
+    if (sides_calib[i]<500){
       onWhite[i] = 1;
     }
     else {onWhite[i] = 0;}
-    if (onWhite[i]==1)PORTB |= (1<<(2*i+1));
-    else PORTB &= ~(1<<(2*i+1));
+
+    //Turn On LED for Left and Right Sensors
+    if (onWhite[i]==1)PORTB |= (1<<(3*i));
+    else PORTB &= ~(1<<(3*i));
     i++;
     }
     if(onWhite[0]>prevState[0]){
@@ -211,7 +236,7 @@ int main(){
     callibrate();
     if(PINC&(1<<6)){
       set = 1;
-      PORTB |= (1<<0); //turn LED on
+      PORTD |= (1<<5); //turn LED on
     }
   }
 
@@ -224,7 +249,7 @@ int main(){
   double derivative = 0;
   double correction;
   int case_;
-
+  int section = 0;
   // int8_t motorSpeeds[2] = {0,0};
 	while(1){ //infinte loop
     case_ = detectMarkers();
@@ -235,18 +260,24 @@ int main(){
       error = last_error;
     }
 
-    errorSum = errorSum + error;
+    //Sum error between markers, ignore while robot is finishing previous section
+    if (sectCounter>500){
+      errorSum = errorSum + error;
+    }
 
     if(case_ == 1 || iteration>1000){
-      iteration = 1;
+      sectCounter = 0;
       errorSum = 0;
+      section++
     }
+
+
     if(case_ == 2){
       if(RMarker == 2*intersections + 2){
-        _delay_ms(100);
         stopMotors();
-        _delay_ms(1000);
+        _delay_ms(2000);
         RMarker = 1;
+        section = 0;
       }
       else{
         RMarker++;
