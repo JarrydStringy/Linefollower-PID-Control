@@ -1,8 +1,8 @@
 
 MAIN = PIDControl
 
-FLASH.bin : $(MAIN).elf
-	avr-objcopy -O binary $(MAIN).elf FLASH.bin
+FLASH.BIN : $(MAIN).elf
+	avr-objcopy -O binary $(MAIN).elf FLASH.BIN
 
 $(MAIN).elf : $(MAIN).o Motors.o Sensors.o
 	avr-gcc -mmcu=atmega32u4 $(MAIN).o Motors.o Sensors.o -o $(MAIN).elf
