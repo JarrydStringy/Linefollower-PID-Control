@@ -5,42 +5,28 @@
 #include "Motors.h"
 #include "Sensors.h"
 
+//Hard code of number of intersections
 #define intersections 2
 
-#define Kp 15
-#define Kd 0
-#define Ki 0.01
+//PID control constants, Ki unused
+#define Kp 18
+#define Kd 26
+#define Ki 0
 
-#define THRESHOLD 110
-
-#define RIGHT_SLOW_SPEED 10
-#define LEFT_SLOW_SPEED 10
-#define RIGHT_MID_SPEED 25
-#define LEFT_MID_SPEED 25
+//Speed constants
+#define RIGHT_SLOW_SPEED 20
+#define LEFT_SLOW_SPEED 20
 #define RIGHT_FAST_SPEED 40
 #define LEFT_FAST_SPEED 40
-#define MAX_CORRECTION 127
 
-int RIGHT_BASE_SPEED =RIGHT_SLOW_SPEED;
-int LEFT_BASE_SPEED =LEFT_SLOW_SPEED;
-
-#define STRAIGHT 1
-#define CORNER 0
-int map[50];
-for (int i=0; i<50;i++){
-  map[i] = 9;
-}
-int sectCounter = 0;
+  int RIGHT_BASE_SPEED =RIGHT_SLOW_SPEED;
+  int LEFT_BASE_SPEED =LEFT_SLOW_SPEED;
 
 int onWhite[2];
-int onColour;
-int slowZone = 0;
 
 double maxVal[] = {0,0,0,0,0,0,0};
 double minVal[] = {255,255,255,255,255,255,255};
 
-
-// int lindex=0;
 
 void setup(){
   DDRB |= (1<<0); //set up LED as output
@@ -53,6 +39,12 @@ void setup(){
   SetUpMotors();
 }
 
+
+/*
+ * line_Position
+ *    Outputs the error value (line position) used for PD control
+ *    using weighted average of normalised sensor values.
+ */
 double line_Position(){
   uint8_t sensor_ADMUX[] =  {0b11100100,0b11100101,0b11100110,0b11100111,0b11100011,0b11100010};
   uint8_t sensor_ADCSRB[] = {0b00000000,0b00000000,0b00000000,0b00000000,0b00100000,0b00100000};
@@ -61,6 +53,8 @@ double line_Position(){
   double sum = 0;
   double weightedSum = 0;
   double error;
+
+  // Read Sensors
   int i = 0;
   while (i<6){
     ADMUX = sensor_ADMUX[i];
@@ -70,6 +64,8 @@ double line_Position(){
     sensor[i] = ADCH;
     i++;
   }
+
+  // Normalise values and calculate sum and weightedSum
   i = 0;
   while (i<6){
     sensor_calib[i] = 1000 - (sensor[i] - minVal[i])/(maxVal[i] - minVal[i])*1000;
@@ -77,13 +73,23 @@ double line_Position(){
     weightedSum = weightedSum + (i * sensor_calib[i]);
     i++;
   }
+
+  // Calculate error value
   error = 2*(weightedSum/sum) - 5;
+
+  // If the line is not seen return exit value
   if (sum < 300*6){
     error = 10;
   }
   return error;
 }
 
+/*
+ * callibrate
+ *    Checks the current sensor values and stores them if they are new maxima
+ *    or minima. Allows callibrated normalisation if run in a loop prior to the
+ *    main code loop.
+ */
 void callibrate(){
   // ADC registers for middle six sensors
   uint8_t sensor_ADMUX[] =  {0b11100100,0b11100101,0b11100110,0b11100111,0b11100011,0b11100010,0b11100001,0b11100000};
@@ -109,35 +115,23 @@ void callibrate(){
 }
 
 
-// void Straight_Detection(double error){
-//   last10[lindex] = error;
-//   lindex++;
-//   if(lindex>9){lindex=0;}
-//
-//   double lineSum=0;
-//   int i = 0;
-//   while(i<10){
-//     lineSum += last10[i];
-//   }
-//   i++;
-//   double lineAve = lineSum/10;
-//   if(lineAve>-1&&lineAve<1){
-//     PORTB |= (1>>0);
-//   }
-//   else{
-//     PORTB &= ~(1>>0);
-//   }
-// }
-
+/*
+ * correctError
+ *    Given a pre calculated correction as an input, turn to line.
+ */
 void correctError( double correction ){
   double motorSpeeds[2] = {0,0};
+
+  //Ensure the values are possible (-100% to 100%)
   motorSpeeds[0] = fmin(fmax(LEFT_BASE_SPEED - correction, -100), 100);
   motorSpeeds[1] = fmin(fmax(RIGHT_BASE_SPEED + correction, -100), 100);
 
+  // Convert motorSpeeds percentages to integer duty cycles 0-255
   uint8_t MSpeeds1; uint8_t MSpeeds2;
   MSpeeds1 = (double)(motorSpeeds[0] * 255.0/100.0);
   MSpeeds2 = (double)(motorSpeeds[1] * 255.0/100.0);
 
+  // Run motor 0 (Forwards or Backwards)
   if (motorSpeeds[0]>=0){
     OCR0A = MSpeeds1;
     OCR0B = 0;
@@ -146,7 +140,7 @@ void correctError( double correction ){
     OCR0A = 0;
     OCR0B = -MSpeeds1;
   }
-
+  // Run motor 1 (Forwards or Backwards)
   if (motorSpeeds[1]>=0){
     OCR1A = MSpeeds2;
     OCR1B = 0;
@@ -157,7 +151,7 @@ void correctError( double correction ){
   }
 }
 
-
+// Stop all motion
 void stopMotors(){
   OCR0A = 0;
   OCR0B = 0;
@@ -165,25 +159,14 @@ void stopMotors(){
   OCR1B = 0;
 }
 
-
-void mapping(int sect, double error){
-
-
-  if( errorSum/(double)iteration > -0.5  &&  errorSum/(double)iteration < 0.5 ){
-    // PORTB &= ~(1<<1);
-    PORTB |= (1<<2);
-    RIGHT_BASE_SPEED =RIGHT_FAST_SPEED;
-    LEFT_BASE_SPEED =LEFT_FAST_SPEED;
-  }
-  else {
-    // PORTB |= (1<<1);
-    PORTB &= ~(1<<2);
-    RIGHT_BASE_SPEED =RIGHT_MID_SPEED;
-    LEFT_BASE_SPEED =LEFT_MID_SPEED;
-  }
-}
-
-
+/*
+ * detectMarkers
+ *    Check if wing sensors see side markers.
+ *    Outputs:
+ *      1 - only LEFT marker seen
+ *      2 - only RIGHT marker seen
+ *      3 - both markers seen
+ */
 int detectMarkers(){
   int prevState[2];
   uint8_t sensor_ADMUX[] =  {0b11100001,0b11100000};
@@ -193,45 +176,40 @@ int detectMarkers(){
   int case_ = 0;
   int i = 0;
   while (i<2){
-    prevState[i]= onWhite[i];
+    // Read Sensor
+    prevState[i] = onWhite[i];
     ADMUX = sensor_ADMUX[i];
     ADCSRB = sensor_ADCSRB[i];
     ADCSRA |= (1<<ADSC);
     while(ADCSRA & (1<<ADSC));
     sides[i] = ADCH;
     sides_calib[i] = (sides[i] - minVal[i+6])/(maxVal[i+6] - minVal[i+6])*1000;
-
+    // Check if current sensor sees white and indicate.
     if (sides_calib[i]<500){
       onWhite[i] = 1;
+      PORTB |= (1<<(3*i));
     }
-    else {onWhite[i] = 0;}
-
-    //Turn On LED for Left and Right Sensors
-    if (onWhite[i]==1)PORTB |= (1<<(3*i));
-    else PORTB &= ~(1<<(3*i));
+    else{
+      onWhite[i] = 0;
+      PORTB &= (1<<(3*i));
+    }
     i++;
-    }
-    if(onWhite[0]>prevState[0]){
-      case_ = case_ + 1;
-    }
-    if(onWhite[1]<prevState[1]){
-      case_ = case_ + 2;
-    }
+  }
+  //Check if seeing left marker (rising edge)
+  if(onWhite[0]>prevState[0]){
+    case_ = case_ +1;
+  }
+  // Check if seeing right marker (falling edge)
+  if(onWhite[1]<prevState[1]){
+    case_ = case_ +2;
+  }
   return case_;
 }
 
-
 int main(){
-  uint8_t sensor[6];
   int set = 0;
   setup();
-  //
-  // motorSpeeds[0] = -100;
-  // motorSpeeds[1] = -100;
-  // setMotorSpeeds(motorSpeeds[0],motorSpeeds[1]);
-  // while(1);
-
-  //Setup Loop (See Setup Function for Full Setup)
+  // Callibration loop
   while(set == 0){
     callibrate();
     if(PINC&(1<<6)){
@@ -243,85 +221,62 @@ int main(){
   double error;
   double last_error;
   int iteration = 1;
-  int RMarker = 1;
+  int RMarker = 0;
   double errorSum=0;
-  double errorAve=0;
   double derivative = 0;
   double correction;
   int case_;
-  int section = 0;
-  // int8_t motorSpeeds[2] = {0,0};
+
 	while(1){ //infinte loop
+    // Read Inputs
     case_ = detectMarkers();
-    // callibrate();
-    // SetUpMotors();
     error = line_Position();
+
+    // If escape error value is returned, assume line is in prev. direction
     if (error == 10){
       error = last_error;
     }
 
-    //Sum error between markers, ignore while robot is finishing previous section
-    if (sectCounter>500){
-      errorSum = errorSum + error;
-    }
+    // errorSum used for straight detection
+    errorSum = errorSum + error;
 
-    if(case_ == 1 || iteration>1000){
-      sectCounter = 0;
+    // On left marker reset straight detection variables
+    if(case_ == 1 || iteration>3000){
+      iteration = 1;
       errorSum = 0;
-      section++
     }
 
-
-    if(case_ == 2){
-      if(RMarker == 2*intersections + 2){
+    // On right marker count up to stop marker. Stop on stop marker
+    if(case_ == 2 || case_ == 3){
+      if(RMarker == 2*intersections +1){
         stopMotors();
-        _delay_ms(2000);
-        RMarker = 1;
-        section = 0;
+        _delay_ms(3000);
+        RMarker = 0;
       }
       else{
         RMarker++;
       }
     }
 
-    if( errorSum/(double)iteration > -0.5  &&  errorSum/(double)iteration < 0.5 ){
-      // PORTB &= ~(1<<1);
+    // Check for straights based on average error value
+    if(iteration > 50 && errorSum/(double)iteration > -0.5  &&  errorSum/(double)iteration < 0.5 ){
       PORTB |= (1<<2);
       RIGHT_BASE_SPEED =RIGHT_FAST_SPEED;
       LEFT_BASE_SPEED =LEFT_FAST_SPEED;
     }
     else {
-      // PORTB |= (1<<1);
       PORTB &= ~(1<<2);
-      RIGHT_BASE_SPEED =RIGHT_MID_SPEED;
-      LEFT_BASE_SPEED =LEFT_MID_SPEED;
+      RIGHT_BASE_SPEED =RIGHT_SLOW_SPEED;
+      LEFT_BASE_SPEED =LEFT_SLOW_SPEED;
     }
 
+    // Calculate and perform error correction (PD Control)
     derivative = error - last_error;
     last_error = error;
-
-    // correction = MAX_CORRECTION*(Kp*error + Kd*derivative)/(Kp*5 + Kd*10);
-    correction = Kp*error + Kd*derivative;
+    correction = Kp*error + Kd*derivative + Ki*integral;
 
     correctError(correction);
-    iteration++;
 
-      // last10[lindex] = error;
-      // lindex++;
-      // if(lindex>9){lindex=0;}
-      //
-      // double lineSum=0;
-      // int i = 0;
-      // while(i<10){
-      //   lineSum += last10[i];
-      // }
-      // i++;
-      // double lineAve = lineSum/10;
-      // if(lineAve>-1&&lineAve<1){
-      //   PORTB |= (1>>0);
-      // }
-      // else{
-      //   PORTB &= ~(1>>0);
-      // }
+    iteration++;
 	}
 }

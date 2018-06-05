@@ -1,5 +1,8 @@
 #include "Sensors.h"
-#define THRESHOLD 160
+
+uint8_t sensor_ADMUX[] =  {0b11100100,0b11100101,0b11100110,0b11100111,0b11100011,0b11100010,0b11100001,0b11100000};
+uint8_t sensor_ADCSRB[] = {0b00000000,0b00000000,0b00000000,0b00000000,0b00100000,0b00100000,0b00100000,0b00100000};
+
 void ADC_init(){
 	// ADC Enable and prescaler of 128
 	// 16000000/128 = 125000
@@ -9,61 +12,20 @@ void ADC_init(){
 	ADCSRA |= (1 << ADSC);
 }
 
+// ADC Registers for Sensors
 
-// Get Sensor Value store in static array, return pointer
-uint8_t * SensorValue(){
-  uint8_t sensor_ADMUX[] =  {0b11100101,0b11100110,0b11100111,0b11100011,0b11100010,0b11100001};
-  uint8_t sensor_ADCSRB[] = {0b00000000,0b00000000,0b00000000,0b00100000,0b00100000,0b00100000};
-  static uint8_t sensor[6];
-  int i = 0;
-  while (i<6){
-    ADMUX = sensor_ADMUX[i];
-    ADCSRB = sensor_ADCSRB[i];
-    ADCSRA |= (1<<ADSC);
-    while(ADCSRA & (1<<ADSC));
-    sensor[i] = ADCH;
-    i++;
-  }
-	return sensor;
-}
-
-
-
-double line_Positionx(){
-		double line = 0;
-		int num = 0;
-		uint8_t sensor_ADMUX[] =  {0b11100101,0b11100110,0b11100111,0b11100011,0b11100010,0b11100001};
-	  uint8_t sensor_ADCSRB[] = {0b00000000,0b00000000,0b00000000,0b00100000,0b00100000,0b00100000};
-		uint8_t sensor[6];
-		int x1=0; int x2=0; int x3=0;
-		double y1=0; double y2=0; double y3=0;
-		double MinVal=255*3;
-		double a;
-
-	  int i = 0;
-	  while (i<6){
-	    ADMUX = sensor_ADMUX[i];
-	    ADCSRB = sensor_ADCSRB[i];
-	    ADCSRA |= (1<<ADSC);
-	    while(ADCSRA & (1<<ADSC));
-	    sensor[i] = ADCH;
-			i++;
-	  }
-
-		i = 0;
-		while(i<4){
-			if((sensor[i]+sensor[i+1]+sensor[i+2]) < MinVal){
-				y1 =sensor[i]; y2 =sensor[i+1]; y3 =sensor[i+2];
-				x1 = i; 				x2 = (i+1);				  x3 = (i+2);
-				MinVal = (sensor[i]+sensor[i+1]+sensor[i+2]);
-			}
-			i++;
-		}
-
-		a = (y1+y2+2*y3)/2;
-
-		line = (y2 - y1 - 2*a*x1 - a)*2-5;
-
-		return line;
-
+/**
+ *	Read any of the sensors who's registers are defined as sensor_ADMUX and
+ *  sensor_ADCSRB.
+ *
+ *	Parameters:
+ *		sensor_n - The sensor to be read where 0 is the first sensor  in the
+ *      register arrays
+ */
+uint8_t readSensor(int sensor_n){
+  ADMUX = sensor_ADMUX[sensor_n];
+  ADCSRB = sensor_ADCSRB[sensor_n];
+  ADCSRA |= (1<<ADSC);
+  while(ADCSRA & (1<<ADSC));
+  return ADCH;
 }
