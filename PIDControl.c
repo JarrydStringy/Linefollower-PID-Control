@@ -91,6 +91,7 @@ double line_Position(){
  *    main code loop.
  */
 void callibrate(){
+
   // ADC registers for middle six sensors
   uint8_t sensor_ADMUX[] =  {0b11100100,0b11100101,0b11100110,0b11100111,0b11100011,0b11100010,0b11100001,0b11100000};
   uint8_t sensor_ADCSRB[] = {0b00000000,0b00000000,0b00000000,0b00000000,0b00100000,0b00100000,0b00100000,0b00100000};
@@ -122,7 +123,10 @@ void callibrate(){
 void correctError( double correction ){
   double motorSpeeds[2] = {0,0};
 
-  //Ensure the values are possible (-100% to 100%)
+  /* Ensure the values are possible (-100% to 100%)
+   * Correction decreases left speed and increases right speed because
+   * when correction is 0 it is centred on the line
+   */
   motorSpeeds[0] = fmin(fmax(LEFT_BASE_SPEED - correction, -100), 100);
   motorSpeeds[1] = fmin(fmax(RIGHT_BASE_SPEED + correction, -100), 100);
 
@@ -271,10 +275,9 @@ int main(){
     }
 
     // Calculate and perform error correction (PD Control)
-    derivative = error - last_error;
     last_error = error;
-    correction = Kp*error + Kd*derivative + Ki*integral;
-
+    derivative = error - last_error;
+    correction = Kp*error + Kd*derivative;
     correctError(correction);
 
     iteration++;
